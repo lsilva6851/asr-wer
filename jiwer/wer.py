@@ -23,11 +23,16 @@ automatic speech recognition system
 """
 
 import re
-
+import sys
 import numpy as np
 
 from typing import Union, List, Tuple
 from itertools import chain
+
+import nltk
+nltk.download('stopwords')
+from nltk.corpus import stopwords
+
 
 ################################################################################
 # Implementation of the WER method, exposed publicly
@@ -55,21 +60,11 @@ def wer(truth: Union[str, List[str], List[List[str]]],
         raise ValueError("truth needs to be a non-empty list of string")
 
     # Create the list of vocabulary used
-    vocab = list()
-
-    for w in chain(truth, hypothesis):
-        if w not in vocab:
-            vocab.append(w)
+    vocab = list(set([w for w in chain(truth, hypothesis)]))
 
     # recreate the truth and hypothesis string as a list of tokens
-    t = []
-    h = []
-
-    for w in truth:
-        t.append(vocab.index(w))
-
-    for w in hypothesis:
-        h.append(vocab.index(w))
+    t = [vocab.index(w) for w in truth]
+    h = [vocab.index(w) for w in hypothesis]
 
     # now that the words are tokenized, we can do alignment
     distance = _edit_distance(t, h)
@@ -83,8 +78,8 @@ def wer(truth: Union[str, List[str], List[List[str]]],
 ################################################################################
 # Implementation of helper methods, private to this package
 
-
-_common_words_to_remove = ["yeah", "so", "oh", "ooh", "yhe"]
+# _common_words_to_remove = stopwords.words('portuguese')
+_common_words_to_remove = ['']
 
 
 def _preprocess(text: Union[str, List[str], List[List[str]]],
@@ -96,6 +91,11 @@ def _preprocess(text: Union[str, List[str], List[List[str]]],
     :param text:
     :return:
     """
+    if words_to_remove:
+        words_to_remove = words_to_remove + _common_words_to_remove
+    else: 
+        words_to_remove = _common_words_to_remove
+
     if isinstance(text, str):
         return _preprocess_text(text,
                                 standardize=standardize,
@@ -124,6 +124,12 @@ def _preprocess_text(phrase: str,
                      standardize: bool = False,
                      words_to_remove: List[str] = None)\
         -> List[str]:
+
+    if words_to_remove:
+        words_to_remove = words_to_remove + _common_words_to_remove
+    else: 
+        words_to_remove = _common_words_to_remove
+
     """
     Applies the following preprocessing steps on a string of text (a sentence):
 
@@ -147,10 +153,6 @@ def _preprocess_text(phrase: str,
     # lowercase
     phrase = phrase.lower()
 
-    # deal with abbreviated words
-    if standardize:
-        phrase = _standardise(phrase)
-
     # remove words between [] and <>
     phrase = re.sub('[<\[](\w)*[>\]]', "", phrase)
 
@@ -167,43 +169,9 @@ def _preprocess_text(phrase: str,
     phrase = phrase.split(" ")
 
     # remove common stop words (from observation):
-    if words_to_remove is not None:
-        for word_to_remove in words_to_remove:
-            if word_to_remove in phrase:
-                phrase.remove(word_to_remove)
+    phrase = [word for word in phrase if all([word not in words_to_remove, len(words_to_remove) > 0])]
 
     return phrase
-
-
-def _standardise(phrase: str):
-    """
-    Standardise a phrase by removing common abbreviations from a sentence
-    as well as making everything lowercase
-
-    :param phrase: the sentence
-    :return: the sentence with common stuff removed
-    """
-    # lowercase
-    if not phrase.islower():
-        phrase = phrase.lower()
-
-    # specific
-    phrase = re.sub(r"won't", "will not", phrase)
-    phrase = re.sub(r"can\'t", "can not", phrase)
-    phrase = re.sub(r"let\'s", "let us",  phrase)
-
-    # general
-    phrase = re.sub(r"n\'t", " not", phrase)
-    phrase = re.sub(r"\'re", " are", phrase)
-    phrase = re.sub(r"\'s", " is", phrase)
-    phrase = re.sub(r"\'d", " would", phrase)
-    phrase = re.sub(r"\'ll", " will", phrase)
-    phrase = re.sub(r"\'t", " not", phrase)
-    phrase = re.sub(r"\'ve", " have", phrase)
-    phrase = re.sub(r"\'m", " am", phrase)
-
-    return phrase
-
 
 def _edit_distance(a: List[int], b:List[int]) -> int:
     """
@@ -265,21 +233,12 @@ def _edit_distance(a: List[int], b:List[int]) -> int:
 
 
 def main():
-    r = "hello this is a nice day"
-    h = "hello this a day"
 
-    print(r, "\n", h, sep="")
-    print(wer(r, h))
+    ref = open(sys.argv[1], mode='r', encoding="latin1").read()
+    hyp = open (sys.argv[2], mode='r', encoding="latin1").read()
 
-    test_standardize()
-
-
-def test_standardize():
-    e1 = wer("he's my neminis", "he is my <unk> [laughter]", standardize=True)
-    e2 = wer("he is my neminis", "he is my")
-
-    assert e1 == e2
-
+    print(ref, "\n", hyp, sep="")
+    print(wer(ref, hyp))
 
 if __name__ == '__main__':
     main()
